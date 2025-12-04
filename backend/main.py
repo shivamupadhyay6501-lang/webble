@@ -152,25 +152,54 @@ def is_casual_question(question: str) -> bool:
 async def chat_directly(question: str) -> str:
     """Direct chat without web search for casual questions"""
     
-    if not HUGGINGFACE_API_KEY:
-        # Fallback responses
-        responses = {
-            'hi': "Hello! How can I help you today?",
-            'hello': "Hi there! What would you like to know?",
-            'how are you': "I'm doing great, thanks for asking! How can I assist you?",
-            'sad': "I'm sorry you're feeling sad. Remember, it's okay to feel this way sometimes. Is there anything I can help you with?",
-            'happy': "That's wonderful! I'm glad you're feeling happy! 😊",
-            'tired': "I understand. Make sure to get some rest when you can. How can I help you?",
-            'joke': "Why don't scientists trust atoms? Because they make up everything! 😄",
-            'who are you': "I'm Webble, your AI search assistant! I can answer questions by searching the web or just chat with you.",
-        }
-        
-        question_lower = question.lower()
-        for key, response in responses.items():
-            if key in question_lower:
-                return response
-        
-        return "I'm here to chat! What's on your mind?"
+    question_lower = question.lower().strip()
+    
+    # Detailed fallback responses
+    if any(word in question_lower for word in ['hi', 'hello', 'hey', 'hii']):
+        return "Hello! 👋 I'm Webble, your AI assistant. I can search the web for information or just chat with you. What would you like to talk about?"
+    
+    if 'how are you' in question_lower:
+        return "I'm doing great, thanks for asking! 😊 I'm here and ready to help you with anything. How are you doing?"
+    
+    if any(word in question_lower for word in ['sad', 'depressed', 'down', 'unhappy']):
+        return "I'm sorry you're feeling this way. 💙 Remember, it's completely normal to feel sad sometimes. Talking about it can help. Would you like to share what's on your mind, or shall I help you with something to take your mind off things?"
+    
+    if any(word in question_lower for word in ['happy', 'great', 'awesome', 'excited']):
+        return "That's wonderful! 🎉 I'm so glad you're feeling happy! Your positive energy is contagious. What's making you feel so good today?"
+    
+    if any(word in question_lower for word in ['tired', 'exhausted', 'sleepy']):
+        return "I understand, we all get tired sometimes. 😴 Make sure to get some rest when you can. In the meantime, how can I help make things easier for you?"
+    
+    if any(word in question_lower for word in ['bored', 'boring']):
+        return "Feeling bored? Let's fix that! 🎯 I can help you learn something new, find interesting facts, or we can just chat. What sounds good to you?"
+    
+    if 'joke' in question_lower or 'funny' in question_lower:
+        jokes = [
+            "Why don't scientists trust atoms? Because they make up everything! 😄",
+            "Why did the scarecrow win an award? Because he was outstanding in his field! 🌾",
+            "What do you call a bear with no teeth? A gummy bear! 🐻",
+            "Why don't eggs tell jokes? They'd crack each other up! 🥚",
+        ]
+        import random
+        return random.choice(jokes)
+    
+    if any(word in question_lower for word in ['who are you', 'what are you', 'your name']):
+        return "I'm Webble! 🤖 I'm an AI assistant that can search the web to answer your questions or just have a friendly chat with you. I'm here to help make your day easier and more interesting!"
+    
+    if any(word in question_lower for word in ['thank', 'thanks']):
+        return "You're very welcome! 😊 I'm always happy to help. Is there anything else you'd like to know?"
+    
+    if any(word in question_lower for word in ['bye', 'goodbye', 'see you']):
+        return "Goodbye! 👋 It was nice chatting with you. Come back anytime you need help or just want to talk!"
+    
+    if 'good morning' in question_lower:
+        return "Good morning! ☀️ Hope you have a wonderful day ahead! How can I help you today?"
+    
+    if 'good night' in question_lower:
+        return "Good night! 🌙 Sleep well and sweet dreams! See you tomorrow!"
+    
+    # Default friendly response
+    return "I'm here to help! 😊 You can ask me anything - I'll search the web for factual questions or just chat with you about how you're feeling. What's on your mind?"
     
     # Use HuggingFace for better casual chat
     url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
