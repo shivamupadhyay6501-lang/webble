@@ -123,13 +123,109 @@ Answer:"""
 async def root():
     return {"message": "Webble API - Free AI Web Search Assistant"}
 
+def is_casual_question(question: str) -> bool:
+    """Check if question is casual chat (no web search needed)"""
+    casual_patterns = [
+        'hi', 'hello', 'hey', 'hii', 'hiii',
+        'how are you', 'whats up', "what's up",
+        'good morning', 'good evening', 'good night',
+        'thanks', 'thank you', 'bye', 'goodbye',
+        'i am sad', "i'm sad", 'i am happy', "i'm happy",
+        'i am tired', "i'm tired", 'i am bored', "i'm bored",
+        'tell me a joke', 'make me laugh',
+        'who are you', 'what are you', 'your name',
+    ]
+    
+    question_lower = question.lower().strip()
+    
+    # Check if it's a casual greeting or emotion
+    for pattern in casual_patterns:
+        if pattern in question_lower:
+            return True
+    
+    # Check if it's very short (likely casual)
+    if len(question_lower.split()) <= 3 and '?' not in question_lower:
+        return True
+    
+    return False
+
+async def chat_directly(question: str) -> str:
+    """Direct chat without web search for casual questions"""
+    
+    if not HUGGINGFACE_API_KEY:
+        # Fallback responses
+        responses = {
+            'hi': "Hello! How can I help you today?",
+            'hello': "Hi there! What would you like to know?",
+            'how are you': "I'm doing great, thanks for asking! How can I assist you?",
+            'sad': "I'm sorry you're feeling sad. Remember, it's okay to feel this way sometimes. Is there anything I can help you with?",
+            'happy': "That's wonderful! I'm glad you're feeling happy! 😊",
+            'tired': "I understand. Make sure to get some rest when you can. How can I help you?",
+            'joke': "Why don't scientists trust atoms? Because they make up everything! 😄",
+            'who are you': "I'm Webble, your AI search assistant! I can answer questions by searching the web or just chat with you.",
+        }
+        
+        question_lower = question.lower()
+        for key, response in responses.items():
+            if key in question_lower:
+                return response
+        
+        return "I'm here to chat! What's on your mind?"
+    
+    # Use HuggingFace for better casual chat
+    url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
+    
+    prompt = f"""You are Webble, a friendly AI assistant. Have a natural, warm conversation.
+
+User: {question}
+Assistant:"""
+    
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 150,
+            "temperature": 0.9,
+            "top_p": 0.95,
+            "return_full_text": False
+        }
+    }
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+            
+            if response.status_code == 503:
+                return "I'm here to chat! What's on your mind?"
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "I'm here to help! What would you like to talk about?")
+            return "I'm here to help! What would you like to talk about?"
+            
+        except Exception:
+            return "I'm here to chat! How can I help you?"
+
 @app.post("/ask", response_model=AnswerResponse)
 async def ask_question(request: QuestionRequest):
-    """Main endpoint: search web and generate AI answer"""
+    """Main endpoint: smart routing between casual chat and web search"""
     
-    if not request.question or len(request.question.strip()) < 3:
+    if not request.question or len(request.question.strip()) < 2:
         raise HTTPException(status_code=400, detail="Question too short")
     
+    # Check if it's a casual question
+    if is_casual_question(request.question):
+        # Direct chat without web search
+        ai_answer = await chat_directly(request.question)
+        return AnswerResponse(
+            answer=ai_answer,
+            sources=[],
+            raw_search_data={}
+        )
+    
+    # For factual questions, search the web
     # Step 1: Search DuckDuckGo
     ddg_results = await search_duckduckgo(request.question)
     
@@ -137,18 +233,20 @@ async def ask_question(request: QuestionRequest):
     context, sources = extract_search_results(ddg_results)
     
     if not context or context == "No detailed results found.":
+        # If no web results, try direct AI chat
+        ai_answer = await chat_directly(request.question)
         return AnswerResponse(
-            answer="I couldn't find relevant information for your question. Try rephrasing it.",
+            answer=ai_answer,
             sources=[],
             raw_search_data=ddg_results
         )
     
-    # Step 3: Generate AI answer
+    # Step 3: Generate AI answer with web context
     ai_answer = await ask_ai_model(request.question, context)
     
     return AnswerResponse(
         answer=ai_answer,
-        sources=sources[:5],  # Limit to top 5 sources
+        sources=sources[:5],
         raw_search_data=ddg_results
     )
 
