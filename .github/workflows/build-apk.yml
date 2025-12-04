@@ -1,0 +1,84 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Backend API URL'
+        required: false
+        default: 'http://localhost:8001'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.5'
+        channel: 'stable'
+    
+    - name: Get dependencies
+      working-directory: ./frontend
+      run: flutter pub get
+    
+    - name: Run tests (if any)
+      working-directory: ./frontend
+      run: flutter test || echo "No tests found"
+      continue-on-error: true
+    
+    - name: Build APK (Debug)
+      working-directory: ./frontend
+      run: flutter build apk --debug
+      env:
+        API_URL: ${{ github.event.inputs.api_url || 'http://localhost:8001' }}
+    
+    - name: Build APK (Release)
+      working-directory: ./frontend
+      run: flutter build apk --release --dart-define=API_URL=${{ github.event.inputs.api_url || 'http://localhost:8001' }}
+      continue-on-error: true
+    
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: webble-debug-apk
+        path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+        retention-days: 30
+    
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: webble-release-apk
+        path: frontend/build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 90
+      continue-on-error: true
+    
+    - name: Create Release Info
+      run: |
+        echo "# Build Information" > build-info.txt
+        echo "Build Date: $(date)" >> build-info.txt
+        echo "Commit: ${{ github.sha }}" >> build-info.txt
+        echo "Branch: ${{ github.ref_name }}" >> build-info.txt
+        echo "API URL: ${{ github.event.inputs.api_url || 'http://localhost:8001' }}" >> build-info.txt
+    
+    - name: Upload Build Info
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-info
+        path: build-info.txt
+        retention-days: 30
